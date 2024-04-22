@@ -1,0 +1,80 @@
+- Nodes: Featureless and indivisible objects that can be connected via edges. Nodes are usually nouns
+- Edges: Use to connect nodes to describe relationships between the nodes. Edges are usually verbs
+- Undirected graph: bi-directional relationship. All graphs in Neo4j are directed.
+  - Example: **(a.Person)-[:MARRIED_TO]-(b.Person)**
+- Directed graph: relationships with the same type but in opposing directions that can carry different strengths or configurations
+  - Example: **(a.Person)-[:WORK_FOR]->(c.Company)**
+- Weighted graph: a graph with a value associated with each edge.
+- Labels: provides starting point for queries. Can have zero to many labels (part of node)
+  - Example: **(a.Person)** is a node, then Person specifies the labels for Cypher to look for.
+- Properties: key, value pairs that can be added or removed from a node as necessary (part of node)
+  - Example: **(a.Person)-[:MARRIED_TO]->(b.Person) WHERE a.firstName = 'Michael'**. Then firstName is a property
+- Relationships: the edges in Neo4j. Each relationship must has a **type** and a direction. Optionally, can also have properties.
+  - Example: **(a.Person)-[:MARRIED_TO]->(b.Person)** then **[:MARRIED_TO]** is the relationship type
+- Neo4j features: native graph database; ACID compliant; index-free adjacency
+  - index-free adjacency: nodes and relationships are stored as objects that are linked via pointers.
+  - Benefits of index-free adjacency: fewer index lookups; no table scans; reduced duplication of data.
+-  Models that can be implemented as a graph: relational; key-value; document.
+-  **MATCH**: Works similar to FROM in SQL by matching patterns in the data.
+-  Naming best practices:
+  - Labels using **CamelCase**
+  - Property keys and variables using **camelCase**
+  - Use **UPPERCASE** for keywords and relationship types
+  - Property key names need not to be unique
+- Methods of filtering:
+  - By node labels: **MATCH (p:Person)-[:ACTED_IN]->(m:Movie) WHERE m.title='The Matrix' RETURN p.name**
+  - By ranges: **MATCH (p:Person)-[:ACTED_IN]->(m:Movie) WHERE 2000 <= m.released <= 2003 RETURN p.name, m.title, m.released**
+  - By existence of a property: **MATCH (p:Person)-[:ACTED_IN]->(m:Movie) WHERE p.name='Jack Nicholson' AND m.tagline IS NOT NULL RETURN m.title, m.tagline**
+  - By partial strings with **STARTS WITH, ENDS WITH, CONTAINS**: **MATCH (p:Person)-[:ACTED_IN]->() WHERE p.name STARTS WITH 'Michael' RETURN p.name**
+  - Filtering by patterns in the graph: **MATCH (p:Person)-[:WROTE]->(m:Movie) WHERE NOT exists( (p)-[:DIRECTED]->(m) ) RETURN p.name, m.title**
+  - Filtering using a list: **MATCH (p:Person) WHERE p.born IN [1965, 1970, 1975] RETURN p.name, p.born**
+- Finding propertties of a node or relationship by using **keys()** function. Example: **MATCH (p:Person) RETURN p.name, keys(p)**
+- Return all properties in a graph: **CALL db.propertyKeys()**
+- Creating a node: **MERGE (p:Person {name: 'Michael Caine'}) RETURN p**
+- **CREATE** is faster than **MERGE** since it does not look up the primary key before adding the node.
+- When creating a node, you must specify at least one property that will be the unique primary key, and the label of the node.
+- When creating a relationship, you must specify the type and direction.
+- Adding properties for a node or relationship using **SET** clause: **MATCH (p:Person)-[r:ACTED_IN]->(m:Movie) WHERE p.name = 'Michael Caine' AND m.title = 'The Dark Knight' SET r.roles = ['Alfred Penny'], r.year = 2008 RETURN p, r, m**
+- Removing properties using **REMOVE** clause: **MATCH (p:Person)-[r:ACTED_IN]->(m:Movie) WHERE p.name = 'Michael Caine' AND m.title = 'The Dark Knight' REMOVE r.roles RETURN p, r, m**
+  - Never remove the primary key property.
+- **ON MATCH**: modify if matches
+- **ON CREATE**: modify if a node or relationship is created.
+- Delete data with **DELETE** clause
+- Delete a property example: **MATCH (p:Person {name: 'Jane Doe'}) SET p:Developer RETURN p**
+- **DETACH DELETE**: delete all relationships attach to a node
+- Steps to model a graph data model:
+  - Step 1: Understand the domain and specific use cases for the application -
+    - Prepare for modeling by: describing the domain; identifying the systems and users of the application; enumerating the use cases of the application
+    - Need to agree upon: labels; relationship types; and property keys.
+    - Have a set of test use cases. 
+  - Step 2: Modeling the nodes.
+    - Define labels: dominant nouns will be labeled nodes in the graph.
+    - Define node properties: for identifying a node, and answer specific details of the use cases.
+    - Define the steps for each use case using the node properties of a node.
+    - Relationships are based on the verbs in the use cases. Relationship names should be intuitive 
+    - Relationship direction must be explicitly stated or inferred by left-to-right direction
+  - Step 3: Test the use cases against, and gather feedback for refactoring
+  - Step 4: Refactor the graph data model when the database's need change or for performance reasons.
+    - Reasons to refactor: the graph model does not answer all of the use cases; a new use case has come up; the query is not performing optimally.
+    - Use **PROFILE** to see the performance of a query.
+  - Labels should be semantically orthogonal -> Use different labels for different contexts.
+  - Don't use labels for hierarchy, instead use relationships instead.
+    - How to convert label into nodes. Example: **MATCH (m:Movie) UNWIND m.languages AS language WITH  language, collect(m) AS movies MERGE (l:Language {name:language}) WITH l, movies UNWIND movies AS m WITH l,m MERGE (m)-[:IN_LANGUAGE]->(l); MATCH (m:Movie) SET m.languages = null**
+    - Refactor special relationships: **MATCH (n:Actor)-[:ACTED_IN]->(m:Movie) CALL apoc.merge.relationship(n, 'ACTED_IN_' + left(m.released,4), {}, {}, m , {}) YIELD rel RETURN count(*) AS `Number of relationships merged`;**
+  - Intermediate nodes: use when:
+    - Connect more than two nodes in a single context.
+    - Relate something to a relationship
+    - Share data between entities
+  - CSV import steps:
+    - Read the source data.
+    - Transform the data as needed.
+    - Create nodes, relationships, and properties to create the graph.
+  - Field terminator: default is comma, but can also be tab **\t**, pipe **|**. This needs to be specify with **DELIMITER** clause.
+    - Example: **LOAD CSV WITH HEADERS FROM 'https://data.neo4j.com/importing-cypher/people.csv' as row FIELDTERMINATOR '|' RETURN row**
+  - Normalized data typically have multiple CSV files.
+  - Load nodes example: **LOAD CSV WITH HEADERS FROM 'https://data.neo4j.com/importing-cypher/persons.csv' AS row MERGE (p:Person {tmdbId: toInteger(row.person_tmdbId)}) SET p.imdbId = toInteger(row.person_imdbId), p.bornIn = row.bornIn, p.name = row.name, p.bio = row.bio, p.poster = row.poster, p.url = row.url, p.born = row.born, p.died = row.died**
+  - Constraints: make sure that there is no data duplication.
+    - Example of adding constraint: **CREATE CONSTRAINT Person_tmdbId IF NOT EXISTS FOR (x:Person) REQUIRE x.tmdbId IS UNIQUE**
+    - **SHOW CONSTRAINTS**
+    - **DROP CONSTRAINT [constraint_name]**
+  - 
